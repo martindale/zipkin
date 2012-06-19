@@ -86,6 +86,7 @@ class ScribeCollectorService(config: ZipkinCollectorConfig, processor: Processor
     }
 
     if (batchCounter.getAndIncrement < config.maxQueueSize) {
+      Stats.incr("collector.batches_added_to_queue")
       Future.join {
         logEntries.map {
           entry =>
