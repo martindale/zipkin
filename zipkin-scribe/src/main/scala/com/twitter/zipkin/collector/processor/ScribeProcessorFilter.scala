@@ -30,7 +30,7 @@ import com.twitter.zipkin.gen
  *   - the sequence of `LogEntry`s only contains messages we want to pass on (already filtered
  *     by category)
  */
-class ScribeProcessorFilter extends ProcessorFilter[Seq[String], Seq[Span]] {
+class ScribeProcessorFilter extends ProcessorFilter[String, Option[Span]] {
 
   private val log = Logger.get
 
@@ -38,24 +38,21 @@ class ScribeProcessorFilter extends ProcessorFilter[Seq[String], Seq[Span]] {
     def codec = gen.Span
   }
 
-  def apply(logEntries: Seq[String]): Seq[Span] = {
-    logEntries.flatMap {
-      msg =>
-        try {
-          val span = Stats.time("deserializeSpan") {
-            deserializer.fromString(msg)
-          }
-          log.ifDebug("Processing span: " + span + " from " + msg)
-          Some(ThriftAdapter(span))
-        } catch {
-          case e: Exception => {
-            // scribe doesn't have any ResultCode.ERROR or similar
-            // let's just swallow this invalid msg
-            log.warning(e, "Invalid msg: %s", msg)
-            Stats.incr("collector.invalid_msg")
-            None
-          }
-        }
+  def apply(msg: String): Option[Span] = {
+    try {
+      val span = Stats.time("deserializeSpan") {
+        deserializer.fromString(msg)
+      }
+      log.ifDebug("Processing span: " + span + " from " + msg)
+      Some(ThriftAdapter(span))
+    } catch {
+      case e: Exception => {
+        // scribe doesn't have any ResultCode.ERROR or similar
+        // let's just swallow this invalid msg
+        log.warning(e, "Invalid msg: %s", msg)
+        Stats.incr("collector.invalid_msg")
+        None
+      }
     }
   }
 }

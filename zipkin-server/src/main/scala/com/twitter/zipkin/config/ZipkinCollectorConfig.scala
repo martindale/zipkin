@@ -100,17 +100,17 @@ trait ZipkinCollectorConfig extends ZipkinConfig[ZipkinCollector] {
    * sequence of `com.twitter.zipkin.common.Span`s
    */
   type T
-  def rawDataFilter: ProcessorFilter[T, Seq[Span]]
+  def rawDataFilter: ProcessorFilter[T, Option[Span]]
 
   lazy val processor: Processor[T] =
     rawDataFilter andThen
     new SamplerProcessorFilter(globalSampler) andThen
-    new SequenceProcessor[Span](
-      new FanoutProcessor[Span]({
-        new StorageProcessor(storage) ::
-        new IndexProcessor(index, indexingFilter)
-      })
-    )
+    new FanoutProcessor[Option[Span]]({
+      new StorageProcessor(storage) ::
+      new IndexProcessor(index, indexingFilter)
+    })
+
+  val maxQueueSize: Int = 500
 
   def writeQueueConfig: WriteQueueConfig[T]
   lazy val writeQueue: WriteQueue[T] = writeQueueConfig.apply(processor, globalSampler)

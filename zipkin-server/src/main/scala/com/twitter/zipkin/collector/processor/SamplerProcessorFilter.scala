@@ -24,16 +24,19 @@ import com.twitter.zipkin.common.Span
  * Filters out `Span`s that do not meet a `GlobalSampler`'s criteria
  * @param sampler
  */
-class SamplerProcessorFilter(sampler: GlobalSampler) extends ProcessorFilter[Seq[Span], Seq[Span]] {
-  def apply(spans: Seq[Span]): Seq[Span] = {
-    spans.flatMap { span =>
-      span.serviceNames.foreach { name => Stats.incr("received_" + name) }
+class SamplerProcessorFilter(sampler: GlobalSampler) extends ProcessorFilter[Option[Span], Option[Span]] {
+  def apply(span: Option[Span]): Option[Span] = {
+    span match {
+      case Some(s) => {
+        s.serviceNames.foreach { name => Stats.incr("received_" + name) }
 
-      if (sampler(span.traceId)) {
-        Some(span)
-      } else {
-        None
+        if (sampler(s.traceId)) {
+          span
+        } else {
+          None
+        }
       }
+      case _ => None
     }
   }
 }

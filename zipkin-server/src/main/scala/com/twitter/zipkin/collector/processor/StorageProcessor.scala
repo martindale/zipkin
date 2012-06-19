@@ -17,14 +17,19 @@ package com.twitter.zipkin.collector.processor
 
 import com.twitter.zipkin.common.Span
 import com.twitter.zipkin.storage.Storage
+import com.twitter.util.Future
 
 /**
  * Store the incoming span in the storage system.
  */
-class StorageProcessor(storage: Storage) extends Processor[Span] {
+class StorageProcessor(storage: Storage) extends Processor[Option[Span]] {
 
-  def process(span: Span) =
-    storage.storeSpan(span) onFailure failureHandler("storeSpan")
+  def process(span: Option[Span]) = {
+    span match {
+      case Some(s) => storage.storeSpan(s) onFailure failureHandler("storeSpan")
+      case None => Future.Unit
+    }
+  }
 
   def shutdown() = storage.close()
 }

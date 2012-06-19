@@ -18,11 +18,13 @@ package com.twitter.zipkin.collector
 
 import com.twitter.scrooge.BinaryThriftStructSerializer
 import com.twitter.util.Future
+import com.twitter.zipkin.collector.processor.Processor
 import com.twitter.zipkin.common.{Span, Annotation}
 import com.twitter.zipkin.config.sampler.AdjustableRateConfig
 import com.twitter.zipkin.config.ScribeZipkinCollectorConfig
 import com.twitter.zipkin.gen
 import com.twitter.zipkin.adapter.ThriftAdapter
+import java.util.concurrent.atomic.AtomicInteger
 import org.specs.Specification
 import org.specs.mock.{ClassMocker, JMocker}
 
@@ -39,7 +41,8 @@ class ScribeCollectorServiceSpec extends Specification with JMocker with ClassMo
 
   val base64 = "CgABAAAAAAAAAHsLAAMAAAADYm9vCgAEAAAAAAAAAcgPAAYMAAAAAQoAAQAAAAAAAAABCwACAAAAA2JhaAAPAAgMAAAAAAA="
 
-  val queue = mock[WriteQueue[Seq[String]]]
+  val processor = mock[Processor[String]]
+  val batch = mock[AtomicInteger]
   val zkSampleRateConfig = mock[AdjustableRateConfig]
 
   val config = new ScribeZipkinCollectorConfig {
@@ -49,11 +52,11 @@ class ScribeCollectorServiceSpec extends Specification with JMocker with ClassMo
     def storageConfig = null
     def methodConfig = null
 
-    override lazy val writeQueue = queue
+    override val maxQueueSize = 10
     override lazy val sampleRateConfig = zkSampleRateConfig
   }
 
-  def scribeCollectorService = new ScribeCollectorService(config, config.writeQueue, Set(category)) {
+  def scribeCollectorService = new ScribeCollectorService(config, processor, Set(category)) {
     running = true
   }
 
@@ -62,30 +65,33 @@ class ScribeCollectorServiceSpec extends Specification with JMocker with ClassMo
       val cs = scribeCollectorService
 
       expect {
-        one(queue).add(List(base64)) willReturn(true)
+        one(processor).process(base64)
       }
 
-      gen.ResultCode.Ok mustEqual cs.log(validList)()
+      cs.log(validList)() mustEqual gen.ResultCode.Ok
     }
 
     "push back" in {
-      val cs = scribeCollectorService
-
-      expect {
-        one(queue).add(List(base64)) willReturn(false)
+      val cs = new ScribeCollectorService(config, processor, Set(category)) {
+        running = true
+        override val batchCounter = new AtomicInteger(15)
       }
 
-      gen.ResultCode.TryLater mustEqual cs.log(validList)()
+      expect {
+        never(processor).process(base64)
+      }
+
+      cs.log(validList)() mustEqual gen.ResultCode.TryLater
     }
 
     "ignore wrong category" in {
       val cs = scribeCollectorService
 
       expect {
-        never(queue).add(any)
+        never(processor).process(any)
       }
 
-      gen.ResultCode.Ok mustEqual cs.log(wrongCatList)()
+      cs.log(wrongCatList)() mustEqual gen.ResultCode.Ok
     }
 
     "get sample rate" in {

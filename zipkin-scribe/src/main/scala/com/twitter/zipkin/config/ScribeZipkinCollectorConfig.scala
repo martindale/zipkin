@@ -18,10 +18,9 @@ package com.twitter.zipkin.config
 
 import com.twitter.zipkin.collector.processor.ScribeProcessorFilter
 import com.twitter.zipkin.config.collector.CollectorServerConfig
-import com.twitter.zipkin.gen
 
 trait ScribeZipkinCollectorConfig extends ZipkinCollectorConfig {
-  type T = Seq[String]
+  type T = String
   val serverConfig: CollectorServerConfig = new ScribeCollectorServerConfig(this)
 
   def rawDataFilter = new ScribeProcessorFilter

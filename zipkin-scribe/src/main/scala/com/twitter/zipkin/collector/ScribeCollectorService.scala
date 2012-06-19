@@ -20,20 +20,24 @@ import com.twitter.finagle.zookeeper.ZookeeperServerSetCluster
 import com.twitter.logging.Logger
 import com.twitter.ostrich.stats.Stats
 import com.twitter.util.{FuturePool, Future}
+import com.twitter.zipkin.collector.processor.Processor
 import com.twitter.zipkin.config.ZipkinCollectorConfig
 import com.twitter.zipkin.gen
+import java.util.concurrent.atomic.AtomicInteger
 import org.apache.zookeeper.KeeperException
 
 /**
  * This class implements the log method from the Scribe Thrift interface.
  */
-class ScribeCollectorService(config: ZipkinCollectorConfig, val writeQueue: WriteQueue[Seq[_ <: String]], categories: Set[String])
+class ScribeCollectorService(config: ZipkinCollectorConfig, processor: Processor[String], categories: Set[String])
   extends gen.ZipkinCollector.FutureIface with CollectorService {
   private val log = Logger.get
 
   private var zkNodes: Seq[ResilientZKNode] = Seq.empty
 
   val futurePool = FuturePool.defaultPool
+
+  val batchCounter = new AtomicInteger
 
   val TryLater = Future(gen.ResultCode.TryLater)
   val Ok = Future(gen.ResultCode.Ok)
@@ -81,24 +85,24 @@ class ScribeCollectorService(config: ZipkinCollectorConfig, val writeQueue: Writ
       return Ok
     }
 
-    val scribeMessages = logEntries.flatMap {
-      entry =>
-        if (!categories.contains(entry.category.toLowerCase())) {
-          Stats.incr("collector.invalid_category")
-          None
-        } else {
-          Some(entry.`message`)
+    if (batchCounter.getAndIncrement < config.maxQueueSize) {
+      Future.join {
+        logEntries.map {
+          entry =>
+            if (!categories.contains(entry.category.toLowerCase())) {
+              Stats.incr("collector.invalid_category")
+              Future.Unit
+            } else {
+              futurePool(processor.process(entry.`message`))
+            }
         }
-    }
-
-    if (scribeMessages.isEmpty) {
-      Ok
-    } else if (writeQueue.add(scribeMessages)) {
-      Stats.incr("collector.batches_added_to_queue")
-      Stats.addMetric("collector.batch_size", scribeMessages.size)
+      } ensure {
+        batchCounter.decrementAndGet
+      }
       Ok
     } else {
       Stats.incr("collector.pushback")
+      batchCounter.decrementAndGet
       TryLater
     }
   }

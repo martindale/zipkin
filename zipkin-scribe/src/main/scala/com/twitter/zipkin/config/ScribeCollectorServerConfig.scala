@@ -35,7 +35,7 @@ class ScribeCollectorServerConfig(config: ScribeZipkinCollectorConfig) extends C
     log.info("Starting collector service on addr " + config.serverAddr)
 
     /* Start the service */
-    val service = new ScribeCollectorService(config, config.writeQueue, categories)
+    val service = new ScribeCollectorService(config, config.processor, categories)
     service.start()
     ServiceTracker.register(service)
 

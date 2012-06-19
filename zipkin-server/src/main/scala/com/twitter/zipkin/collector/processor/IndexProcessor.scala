@@ -23,19 +23,19 @@ import com.twitter.util.Future
 /**
  * Index the incoming spans.
  */
-class IndexProcessor(index: Index, indexFilter: IndexingFilter) extends Processor[Span] {
+class IndexProcessor(index: Index, indexFilter: IndexingFilter) extends Processor[Option[Span]] {
 
-  def process(span: Span) = {
-    if (indexFilter.shouldIndex(span)) {
-      Future.join(Seq {
-        index.indexTraceIdByServiceAndName(span) onFailure failureHandler("indexTraceIdByServiceAndName")
-        index.indexSpanByAnnotations(span)       onFailure failureHandler("indexSpanByAnnotations")
-        index.indexServiceName(span)             onFailure failureHandler("indexServiceName")
-        index.indexSpanNameByService(span)       onFailure failureHandler("indexSpanNameByService")
-        index.indexSpanDuration(span)            onFailure failureHandler("indexSpanDuration")
-      })
-    } else {
-      Future.Unit
+  def process(span: Option[Span]) = {
+    span match {
+      case Some(s) if indexFilter.shouldIndex(s) =>
+        Future.join(Seq {
+          index.indexTraceIdByServiceAndName(s) onFailure failureHandler("indexTraceIdByServiceAndName")
+          index.indexSpanByAnnotations(s)       onFailure failureHandler("indexSpanByAnnotations")
+          index.indexServiceName(s)             onFailure failureHandler("indexServiceName")
+          index.indexSpanNameByService(s)       onFailure failureHandler("indexSpanNameByService")
+          index.indexSpanDuration(s)            onFailure failureHandler("indexSpanDuration")
+        })
+      case _ => Future.Unit
     }
   }
 
